@@ -1,4 +1,5 @@
 package main
+
 import (
 	"fmt"
 	"bufio"
@@ -8,7 +9,7 @@ import (
 )
 
 //Task 1
-func strmap(s *string) map[string]int {
+func strMap(s *string) map[string]int {
 	collection := strings.Fields(*s)
 	res := make(map[string]int)
 	for _,val := range collection{
@@ -46,7 +47,7 @@ func main() {
 			continue
 		}
 		if n==1{
-			fmt.Println(strmap(&input))
+			fmt.Println(strMap(&input))
 		} else if n==2{
 			if checkPalindrome(input){
 				fmt.Printf("%s is Palindrome.",input)
