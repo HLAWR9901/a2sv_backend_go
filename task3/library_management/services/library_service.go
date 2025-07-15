@@ -12,35 +12,43 @@ type LibraryManager interface{
 	ReturnBook(bookID, memberID int) error
 	ListAvailableBooks() []models.Book
 	ListBorrowedBooks(memberId int)[]models.Book
+	AddMember(member models.Member) error
+	RemoveMember(memberId int) error
 }
 
 type Library struct{
-	books map[int]*models.Book
-	members map[int]*models.Member
+	Books map[int]*models.Book
+	Members map[int]*models.Member
+	NextMember,NextBook int
 }
 
 func (lib *Library) AddBook(book models.Book) error{
-	if _,ok:=lib.books[book.ID];ok{
+    for _, b := range lib.Books {
+        if b.Title == book.Title {
+            return errors.New("book title already exists")
+        }
+    }
+	if _,ok:=lib.Books[book.ID];ok{
 		return errors.New("book already exists")
 	}
-	lib.books[book.ID] = &book
+	lib.Books[book.ID] = &book
 	return nil
 } 
 
 func (lib *Library) RemoveBook(bookID int) error{
-	if _,ok:=lib.books[bookID]; !ok{
+	if _,ok:=lib.Books[bookID]; !ok{
 		return errors.New("book not found")
 	}
-	delete(lib.books,bookID)
+	delete(lib.Books,bookID)
 	return nil
 }
 
 func (lib *Library) BorrowBook(bookID,memberID int) error{
-	b,bexists := lib.books[bookID]
+	b,bexists := lib.Books[bookID]
 	if !bexists{
 		return errors.New("book not found")
 	}
-	m,mexists:=lib.members[memberID]
+	m,mexists:=lib.Members[memberID]
 	if !mexists{
 		return errors.New("member not found")
 	}
@@ -48,18 +56,18 @@ func (lib *Library) BorrowBook(bookID,memberID int) error{
 		return errors.New("book is not available")
 	}
 	b.Status = models.Borrowed
-	// If Borrowed books are maps
+	// If Borrowed Books are maps
 	// m.BorrowedBooks[b.ID] = *b
 	m.BorrowedBooks = append(m.BorrowedBooks, *b)
 	return nil
 }
 
 func (lib *Library) ReturnBook(bookID,memberID int) error{
-	b,bexists := lib.books[bookID]
+	b,bexists := lib.Books[bookID]
 	if !bexists{
 		return errors.New("book not found")
 	}
-	m,mexists:=lib.members[memberID]
+	m,mexists:=lib.Members[memberID]
 	if !mexists{
 		return errors.New("member not found")
 	}
@@ -68,7 +76,7 @@ func (lib *Library) ReturnBook(bookID,memberID int) error{
 	}
 	b.Status = models.Available
 
-	// O(1)? - comment: If req didn't specify the borrowedbooks to be slice (maps would be better choice)
+	// O(1)? - comment: If req didn't specify the borrowedBooks to be slice (maps would be better choice)
 	// delete(m.BorrowedBooks,bookID)
 
 	idx := -1
@@ -86,8 +94,8 @@ func (lib *Library) ReturnBook(bookID,memberID int) error{
 }
 
 func (lib *Library) ListAvailableBooks() []models.Book{
-	avail := make([]models.Book,10)
-	for _,b:= range lib.books{
+	avail := []models.Book{}
+	for _,b:= range lib.Books{
 		if b.Status==models.Available{
 			avail = append(avail,*b)
 		}
@@ -96,6 +104,25 @@ func (lib *Library) ListAvailableBooks() []models.Book{
 }
 
 func (lib *Library) ListBorrowedBooks(memberId int)[]models.Book{
-	return lib.members[memberId].BorrowedBooks
+	return lib.Members[memberId].BorrowedBooks
 }
 
+func (lib *Library) AddMember(member models.Member) error {
+	if _,exists := lib.Members[member.ID]; exists{
+		return errors.New("member already exists")
+	}
+	lib.Members[member.ID] = &member
+	return nil
+}
+
+func (lib *Library) RemoveMember(memberId int) error{
+	m,exists:=lib.Members[memberId]
+	if!exists{
+		return errors.New("member not found")
+	}
+	for _,book := range m.BorrowedBooks{
+		lib.Books[book.ID].Status = models.Available
+	}
+	delete(lib.Members,memberId)
+	return nil
+}
