@@ -8,7 +8,7 @@ import (
 )
 
 var ErrNotFound = errors.New("task not found")
-
+var ErrInvalid = errors.New("invalid required field")
 type TaskRepo interface{
 	Create(models.Task) error
 	UpdateById(models.Task)error
@@ -29,6 +29,13 @@ func NewInMemoryRepo()*InMemoryTaskRepo{
 func (m *InMemoryTaskRepo) Create(t models.Task) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if t.BaseModel.ID == uuid.Nil||
+		t.Name == ""||
+		t.DueDate.IsZero()||
+		t.CreatedAt.IsZero()||
+		t.Status!=models.State(models.Pending) {
+		return ErrInvalid
+	}
 	m.tasks = append(m.tasks, t)
 	return nil
 }
@@ -69,7 +76,7 @@ func (m *InMemoryTaskRepo) UpdateById(t models.Task) error {
 	return ErrNotFound
 }
 
-func (m *InMemoryTaskRepo) DeleteTaskByID(id uuid.UUID) error {
+func (m *InMemoryTaskRepo) DeleteByID(id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
     for i := range m.tasks {

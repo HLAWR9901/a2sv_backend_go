@@ -7,17 +7,17 @@ import (
 type State string
 
 const (
-	Pending State = "Pending"
-	InProgress State = "Inprogress"
-	Completed State = "Completed"
+	Pending State = "pending"
+	InProgress State = "inprogress"
+	Completed State = "completed"
 )
 
 type Importance string
 
 const (
-	High Importance = "High"
-	Medium Importance = "Medium"
-	Low Importance = "Low"
+	High Importance = "high"
+	Medium Importance = "medium"
+	Low Importance = "low"
 )
 
 type BaseModel struct {
