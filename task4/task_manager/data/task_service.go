@@ -1,106 +1,164 @@
 package data
 
 import (
-	"errors"
-	"sync"
-	"task_manager/models"
-	"github.com/google/uuid"
+    "context"
+    "errors"
+    "task_manager/models"
+
+    "github.com/google/uuid"
+    "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/mongo"
 )
 
-var ErrNotFound = errors.New("task not found")
-var ErrInvalid = errors.New("invalid required field")
-type TaskRepo interface{
-	Create(models.Task) error
-	UpdateById(models.Task)error
-	DeleteByID(id uuid.UUID)error
-	GetAll()([]models.Task,error)
-	GetById(id uuid.UUID)(*models.Task,error)
+type Repo struct {
+    Client   *mongo.Client
+    isMemory bool
+    tasks    []models.Task
 }
 
-type InMemoryTaskRepo struct{
-	mu sync.RWMutex
-	tasks []models.Task
+func NewRepo(client *mongo.Client, isMemory bool) *Repo {
+    return &Repo{Client: client, isMemory: isMemory, tasks: []models.Task{}}
 }
 
-func NewInMemoryRepo()*InMemoryTaskRepo{
-	return &InMemoryTaskRepo{tasks:make([]models.Task,0)}
+func (r *Repo) collection(coll string) *mongo.Collection {
+    return r.Client.Database("task_manager_db").Collection(coll)
 }
 
-func (m *InMemoryTaskRepo) Create(t models.Task) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if t.BaseModel.ID == uuid.Nil||
-		t.Name == ""||
-		t.DueDate.IsZero()||
-		t.CreatedAt.IsZero()||
-		t.Status!=models.State(models.Pending) {
-		return ErrInvalid
-	}
-	m.tasks = append(m.tasks, t)
-	return nil
-}
-
-func (m *InMemoryTaskRepo) UpdateById(t models.Task) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for i:= range m.tasks{
-		if m.tasks[i].BaseModel.ID==t.BaseModel.ID{
-			if t.Name!=""{
-				m.tasks[i].Name=t.Name
-			}
-			if t.Description!=""{
-				m.tasks[i].Description = t.Description
-			}
-			if t.Status == models.State(models.Pending) || 
-				t.Status == models.State(models.InProgress) ||
-				t.Status == models.State(models.Completed){
-					m.tasks[i].Status = t.Status
-			}
-			if t.Priority == models.Importance(models.High)||
-				t.Priority == models.Importance(models.Medium)||
-				t.Priority == models.Importance(models.Low){
-					m.tasks[i].Priority = t.Priority
-			}
-			if !t.DueDate.IsZero(){
-				m.tasks[i].DueDate = t.DueDate
-			}
-			if !t.UpdatedAt.IsZero(){
-				m.tasks[i].UpdatedAt = t.UpdatedAt
-			}
-			if t.CompletedAt!=nil{
-				m.tasks[i].CompletedAt = t.CompletedAt
-			}
-			return nil
-		}
-	}
-	return ErrNotFound
-}
-
-func (m *InMemoryTaskRepo) DeleteByID(id uuid.UUID) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-    for i := range m.tasks {
-        if m.tasks[i].ID == id {
-            m.tasks = append(m.tasks[:i], m.tasks[i+1:]...)
-            return nil
-        }
+func (r *Repo) Create(task *models.Task) error {
+    if r.isMemory {
+        r.tasks = append(r.tasks, *task)
+        return nil
     }
-    return ErrNotFound
+    _, err := r.collection("tasks").InsertOne(context.Background(), task)
+    return err
 }
 
-func (m *InMemoryTaskRepo) GetAll()([]models.Task,error) {
-    m.mu.RLock()
-    defer m.mu.RUnlock()	
-    return append([]models.Task(nil), m.tasks...), nil
+func (r *Repo) Update(id string, task models.Task) error {
+    u, err := uuid.Parse(id)
+    if err != nil {
+        return errors.New("invalid UUID")
+    }
+    if r.isMemory {
+        for i, t := range r.tasks {
+            if t.ID == u {
+                if task.Name != "" {
+                    r.tasks[i].Name = task.Name
+                }
+                if task.Description != nil {
+                    r.tasks[i].Description = task.Description
+                }
+                if task.Status != "" {
+                    r.tasks[i].Status = task.Status
+                }
+                if task.Priority != "" {
+                    r.tasks[i].Priority = task.Priority
+                }
+                if task.DueDate != nil {
+                    r.tasks[i].DueDate = task.DueDate
+                }
+                r.tasks[i].UpdatedAt = task.UpdatedAt
+                return nil
+            }
+        }
+        return errors.New("task not found")
+    }
+
+    filter := bson.M{"id": u}
+    updateData := bson.M{"updated_at": task.UpdatedAt}
+    if task.Name != "" {
+        updateData["name"] = task.Name
+    }
+    if task.Description != nil {
+        updateData["description"] = task.Description
+    }
+    if task.Status != "" {
+        updateData["status"] = task.Status
+    }
+    if task.Priority != "" {
+        updateData["priority"] = task.Priority
+    }
+    if task.DueDate != nil {
+        updateData["due_date"] = task.DueDate
+    }
+
+    res, err := r.collection("tasks").UpdateOne(context.Background(), filter, bson.M{"$set": updateData})
+    if err != nil {
+        return err
+    }
+    if res.MatchedCount == 0 {
+        return errors.New("task not found")
+    }
+    return nil
 }
 
-func (m *InMemoryTaskRepo) GetById(id uuid.UUID) (*models.Task,error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for i:= range m.tasks{
-		if m.tasks[i].BaseModel.ID == id{
-			return &m.tasks[i],nil
-		}
-	}
-	return nil,ErrNotFound
+func (r *Repo) Delete(id string) error {
+    u, err := uuid.Parse(id)
+    if err != nil {
+        return errors.New("invalid UUID")
+    }
+    if r.isMemory {
+        for i, t := range r.tasks {
+            if t.ID == u {
+                r.tasks = append(r.tasks[:i], r.tasks[i+1:]...)
+                return nil
+            }
+        }
+        return errors.New("task not found")
+    }
+    res, err := r.collection("tasks").DeleteOne(context.Background(), bson.M{"id": u})
+    if err != nil {
+        return err
+    }
+    if res.DeletedCount == 0 {
+        return errors.New("task not found")
+    }
+    return nil
+}
+
+func (r *Repo) GetAll() ([]models.Task, error) {
+    if r.isMemory {
+        return r.tasks, nil
+    }
+    cursor, err := r.collection("tasks").Find(context.Background(), bson.M{})
+    if err != nil {
+        return nil, err
+    }
+    defer cursor.Close(context.Background())
+
+    var tasks []models.Task
+    for cursor.Next(context.Background()) {
+        var t models.Task
+        if err := cursor.Decode(&t); err != nil {
+            return nil, err
+        }
+        tasks = append(tasks, t)
+    }
+    if err := cursor.Err(); err != nil {
+        return nil, err
+    }
+    return tasks, nil
+}
+
+func (r *Repo) GetById(id string) (*models.Task, error) {
+    u, err := uuid.Parse(id)
+    if err != nil {
+        return nil, errors.New("invalid UUID")
+    }
+    if r.isMemory {
+        for _, t := range r.tasks {
+            if t.ID == u {
+                return &t, nil
+            }
+        }
+        return nil, errors.New("task not found")
+    }
+    var t models.Task
+    err = r.collection("tasks").FindOne(context.Background(), bson.M{"id": u}).Decode(&t)
+    if err == mongo.ErrNoDocuments {
+        return nil, errors.New("task not found")
+    }
+    if err != nil {
+        return nil, err
+    }
+    return &t, nil
 }

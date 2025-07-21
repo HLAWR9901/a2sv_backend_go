@@ -1,17 +1,21 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
-	"task_manager/controllers"
+    "task_manager/controllers"
+    "github.com/gin-gonic/gin"
 )
 
-func SetRouter(r *gin.Engine, s *controllers.Service){
-	tasks := r.Group("/tasks")
-	{
-		tasks.GET("/",s.Get)
-		tasks.GET("/:id",s.GetByID)
-		tasks.POST("/",s.Create)
-		tasks.PUT("/:id",s.Update)
-		tasks.DELETE("/:id",s.Delete)
-	}
+func NewRouter(handler *controllers.Handler) *gin.Engine {
+    router := gin.Default()
+    router.RedirectTrailingSlash = false
+
+    tasks := router.Group("/tasks")
+    {
+        tasks.GET("", handler.GetAll)
+        tasks.GET("/:id", handler.GetById)
+        tasks.POST("", handler.Create)
+        tasks.PUT("/:id", handler.Update)
+        tasks.DELETE("/:id", handler.Delete)
+    }
+    return router
 }
