@@ -2,7 +2,7 @@ package repositories
 
 import "go.mongodb.org/mongo-driver/mongo"
 
-// Repository holds the database connection
+// Repository
 type Repository struct {
 	Database *mongo.Database
 }
